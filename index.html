@@ -734,7 +734,12 @@ Respond ONLY with valid JSON in this exact format (no markdown, no backticks):
   try {
     const result = await callClaude(prompt);
     let parsed;
-    try { parsed = JSON.parse(result); } catch { parsed = { summary: result, deliverables: [], exclusions: [], risk_flags: [], revisions: 'Not specified', payment_terms: 'Not specified', project_type: 'General Project' }; }
+    try {
+      const clean1 = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      parsed = JSON.parse(clean1);
+    } catch {
+      parsed = { summary: result, deliverables: [], exclusions: [], risk_flags: [], revisions: 'Not specified', payment_terms: 'Not specified', project_type: 'General Project' };
+    }
 
     // Save contract to Supabase
     const { data: contract, error } = await sb.from('contracts').insert({
@@ -878,10 +883,24 @@ Respond ONLY with valid JSON (no markdown, no backticks):
   try {
     const result = await callClaude(prompt);
     let parsed;
-    try { parsed = JSON.parse(result); } catch(e) {
-      hideLoading();
-      toast('AI returned unexpected format. Please try again.', 'error');
-      return;
+    try {
+      const clean2 = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      parsed = JSON.parse(clean2);
+    } catch(e) {
+      // Try extracting JSON from middle of text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try { parsed = JSON.parse(jsonMatch[0]); }
+        catch {
+          hideLoading();
+          toast('AI returned unexpected format. Please try again.', 'error');
+          return;
+        }
+      } else {
+        hideLoading();
+        toast('AI returned unexpected format. Please try again.', 'error');
+        return;
+      }
     }
 
     // Save analysis to Supabase
