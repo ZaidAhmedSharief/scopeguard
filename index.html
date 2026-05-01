@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScopeGuard — AI Scope Creep Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --lime:#a8d965;--lime-dark:#8ec040;--lime-light:#d4eea2;--lime-bg:#f4faec;
+  --white:#ffffff;--off-white:#f8faf5;--text:#1a1a1a;--text-muted:#6b7280;--text-light:#9ca3af;
+  --border:#e5e7eb;--border-light:#f3f4f6;
+  --danger:#ef4444;--danger-bg:#fef2f2;
+  --warning:#f59e0b;--warning-bg:#fffbeb;
+  --success:#22c55e;--success-bg:#f0fdf4;
+  --shadow-sm:0 1px 3px rgba(0,0,0,0.08);--shadow-md:0 4px 16px rgba(0,0,0,0.1);--shadow-lg:0 8px 32px rgba(0,0,0,0.14);
+  --radius:12px;--radius-sm:8px;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--white);color:var(--text);line-height:1.6;overflow-x:hidden}
+.page{display:none}.page.active{display:block}
+#page-dashboard{display:none}#page-dashboard.active{display:block}
+
+/* ── TOPBAR ── */
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{display:flex;align-items:center;gap:10px;cursor:pointer;text-decoration:none}
+.logo-mark{width:36px;height:36px;background:var(--lime);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:var(--text)}
+.logo-text{font-size:1.1rem;font-weight:700;color:var(--text)}
+.topbar-nav{display:flex;align-items:center;gap:2rem}
+.topbar-nav a{font-size:.9rem;font-weight:500;color:var(--text-muted);text-decoration:none;cursor:pointer;transition:color .2s}
+.topbar-nav a:hover{color:var(--text)}
+.topbar-actions{display:flex;align-items:center;gap:.75rem}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:.6rem 1.4rem;border-radius:8px;border:none;font-family:inherit;font-weight:600;font-size:.9rem;cursor:pointer;transition:all .2s;white-space:nowrap}
+.btn-lime{background:var(--lime);color:var(--text)}.btn-lime:hover{background:var(--lime-dark);transform:translateY(-1px);box-shadow:var(--shadow-md)}
+.btn-outline{background:transparent;color:var(--text);border:1.5px solid var(--border)}.btn-outline:hover{border-color:var(--lime-dark);color:var(--lime-dark)}
+.btn-ghost{background:transparent;color:var(--text-muted)}.btn-ghost:hover{background:var(--off-white);color:var(--text)}
+.btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
+.btn-lg{padding:.85rem 2rem;font-size:1rem;border-radius:10px}
+.btn-sm{padding:.4rem 1rem;font-size:.82rem}
+.btn-full{width:100%;justify-content:center}
+.btn:disabled{opacity:.6;cursor:not-allowed;transform:none!important}
+
+/* ── FORMS ── */
+.input{width:100%;padding:.75rem 1rem;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:.95rem;color:var(--text);background:var(--white);transition:border-color .2s,box-shadow .2s;outline:none}
+.input:focus{border-color:var(--lime);box-shadow:0 0 0 3px rgba(168,217,101,.2)}
+.input::placeholder{color:var(--text-light)}
+textarea.input{resize:vertical;min-height:140px;line-height:1.6}
+.form-label{display:block;font-weight:600;font-size:.875rem;margin-bottom:.5rem}
+.form-hint{font-size:.8rem;color:var(--text-muted);margin-top:.35rem}
+.field{margin-bottom:1.25rem}
+
+/* ── CARDS ── */
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;box-shadow:var(--shadow-sm)}
+.card-title{font-size:1rem;font-weight:700;margin-bottom:1.25rem}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:600}
+.badge-danger{background:var(--danger-bg);color:var(--danger)}
+.badge-warning{background:var(--warning-bg);color:var(--warning)}
+.badge-success{background:var(--success-bg);color:var(--success)}
+.badge-lime{background:var(--lime-bg);color:var(--lime-dark)}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:2rem;right:2rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem}
+.toast-item{background:var(--text);color:#fff;padding:.875rem 1.25rem;border-radius:var(--radius-sm);font-size:.875rem;font-weight:500;box-shadow:var(--shadow-lg);animation:slideUp .3s ease;display:flex;align-items:center;gap:.75rem;min-width:280px}
+.toast-item.success{background:#16a34a}.toast-item.error{background:var(--danger)}.toast-item.warning{background:var(--warning)}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── SPINNER ── */
+.spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+.spinner-dark{border-color:rgba(0,0,0,.15);border-top-color:var(--text)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ════════════════════════════════
+   LANDING
+════════════════════════════════ */
+.hero{min-height:calc(100vh - 64px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:5rem 2rem;background:linear-gradient(180deg,var(--white) 0%,var(--lime-bg) 100%);position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-100px;right:-100px;width:500px;height:500px;background:radial-gradient(circle,rgba(168,217,101,.2) 0%,transparent 65%);border-radius:50%;pointer-events:none}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--lime-bg);border:1px solid var(--lime-light);color:var(--lime-dark);padding:.4rem 1rem;border-radius:20px;font-size:.85rem;font-weight:600;margin-bottom:1.5rem}
+.hero h1{font-size:clamp(2.2rem,5vw,3.8rem);font-weight:800;line-height:1.15;letter-spacing:-1.5px;margin-bottom:1.25rem;max-width:720px}
+.hero h1 span{color:var(--lime-dark)}
+.hero>p{font-size:1.1rem;color:var(--text-muted);max-width:540px;margin:0 auto 2rem;line-height:1.7}
+.hero-cta{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-bottom:3rem}
+.hero-stats{display:flex;gap:2rem;justify-content:center;flex-wrap:wrap;padding:1.5rem 2rem;background:var(--white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);max-width:680px;width:100%}
+.hero-stat .val{font-size:1.5rem;font-weight:800;color:var(--lime-dark);display:block;letter-spacing:-.5px}
+.hero-stat .lbl{font-size:.78rem;color:var(--text-muted);font-weight:500}
+.hiw{background:var(--off-white);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:5rem 2rem}
+.hiw-inner{max-width:1080px;margin:0 auto}
+.section-tag{font-size:.75rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--lime-dark);margin-bottom:.75rem}
+.section-title{font-size:2rem;font-weight:800;letter-spacing:-.5px;margin-bottom:2.5rem}
+.steps-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.25rem}
+.step-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem}
+.step-num{width:34px;height:34px;background:var(--lime);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.875rem;margin-bottom:1rem}
+.step-card h4{font-weight:700;margin-bottom:.5rem;font-size:.95rem}
+.step-card p{font-size:.875rem;color:var(--text-muted);line-height:1.6}
+.pricing-section{padding:5rem 2rem}
+.pricing-inner{max-width:1080px;margin:0 auto;text-align:center}
+.pricing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;max-width:860px;margin:0 auto}
+.pricing-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius);padding:2rem;text-align:left;position:relative;transition:all .2s}
+.pricing-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.pricing-card.popular{border-color:var(--lime)}
+.popular-tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--lime);color:var(--text);font-size:.75rem;font-weight:700;padding:3px 14px;border-radius:20px;white-space:nowrap}
+.pricing-name{font-weight:700;margin-bottom:.5rem}
+.pricing-price{font-size:2.5rem;font-weight:800;letter-spacing:-1px;margin-bottom:.25rem}
+.pricing-price span{font-size:1rem;font-weight:400;color:var(--text-muted)}
+.pricing-desc{font-size:.85rem;color:var(--text-muted);margin-bottom:1.5rem}
+.feature-list{list-style:none;margin-bottom:1.75rem}
+.feature-list li{display:flex;align-items:center;gap:8px;font-size:.875rem;padding:.4rem 0;border-bottom:1px solid var(--border-light)}
+.feature-list li:last-child{border-bottom:none}
+.fcheck{color:var(--success);font-weight:700}
+.landing-footer{background:var(--off-white);border-top:1px solid var(--border);padding:2rem;text-align:center;font-size:.875rem;color:var(--text-muted)}
+.landing-footer a{color:var(--lime-dark);text-decoration:none}
+
+/* ════════════════════════════════
+   AUTH
+════════════════════════════════ */
+.auth-wrap{min-height:calc(100vh - 64px);display:flex;align-items:center;justify-content:center;background:var(--lime-bg);padding:2rem}
+.auth-box{background:var(--white);border:1px solid var(--border);border-radius:16px;padding:2.5rem;width:100%;max-width:430px;box-shadow:var(--shadow-lg)}
+.auth-box h2{font-size:1.5rem;font-weight:800;margin-bottom:.4rem;letter-spacing:-.5px}
+.auth-subtitle{font-size:.875rem;color:var(--text-muted);margin-bottom:2rem}
+.auth-switch{text-align:center;font-size:.875rem;color:var(--text-muted);margin-top:1.5rem}
+.auth-switch a{color:var(--lime-dark);font-weight:600;cursor:pointer;text-decoration:none}
+.auth-error{background:var(--danger-bg);border:1px solid #fecaca;color:var(--danger);padding:.875rem 1rem;border-radius:var(--radius-sm);font-size:.875rem;margin-bottom:1.25rem;display:none}
+
+/* ════════════════════════════════
+   DASHBOARD
+════════════════════════════════ */
+.db-topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 1.75rem;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.db-topbar-right{display:flex;align-items:center;gap:.75rem}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--lime);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;cursor:pointer}
+.notif-btn{width:34px;height:34px;border-radius:8px;border:1.5px solid var(--border);background:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;color:var(--text-muted);transition:all .2s;position:relative}
+.notif-btn:hover{border-color:var(--lime)}
+.notif-dot{position:absolute;top:4px;right:4px;width:7px;height:7px;background:var(--danger);border-radius:50%;border:1.5px solid var(--white)}
+.db-shell{display:flex;height:calc(100vh - 64px);overflow:hidden}
+.db-sidebar{width:220px;flex-shrink:0;background:var(--white);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:1.25rem .875rem;overflow-y:auto;gap:2px}
+.sidebar-label{font-size:.68rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-light);padding:.75rem .75rem .4rem;margin-top:.5rem}
+.nav-item{display:flex;align-items:center;gap:10px;padding:.65rem .75rem;border-radius:var(--radius-sm);color:var(--text-muted);font-size:.875rem;font-weight:500;cursor:pointer;transition:all .15s;border:none;background:none;width:100%;text-align:left;font-family:inherit}
+.nav-item:hover{background:var(--off-white);color:var(--text)}
+.nav-item.active{background:var(--lime-bg);color:var(--lime-dark);font-weight:600}
+.nav-icon{font-size:1rem;width:18px;flex-shrink:0}
+.nav-badge{margin-left:auto}
+.sidebar-spacer{flex:1}
+.sidebar-plan{margin-top:.75rem;padding:.875rem;background:var(--lime-bg);border-radius:var(--radius-sm);border:1px solid var(--lime-light)}
+.sidebar-plan p{font-size:.78rem;font-weight:700;color:var(--lime-dark)}
+.sidebar-plan span{font-size:.72rem;color:var(--text-muted)}
+.db-main{flex:1;overflow-y:auto;background:var(--off-white)}
+.db-panel{display:none;padding:2rem}.db-panel.active{display:block}
+.panel-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2rem;gap:1rem;flex-wrap:wrap}
+.panel-header h2{font-size:1.6rem;font-weight:800;letter-spacing:-.5px}
+.panel-header p{font-size:.875rem;color:var(--text-muted);margin-top:.25rem}
+.panel-header-actions{display:flex;gap:.75rem;align-items:center}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;margin-bottom:1.75rem}
+.stat-tile{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.5rem;box-shadow:var(--shadow-sm)}
+.stat-label{font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;font-weight:700;color:var(--text-muted);margin-bottom:.5rem}
+.stat-value{font-size:2rem;font-weight:800;letter-spacing:-.5px}
+.stat-sub{font-size:.8rem;color:var(--text-muted);margin-top:.35rem}
+.stat-sub .up{color:var(--success);font-weight:600}
+.stat-sub .hi{color:var(--lime-dark);font-weight:600}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem}
+.grid-1{margin-bottom:1.25rem}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding:.75rem 1rem;border-bottom:2px solid var(--border);white-space:nowrap}
+td{padding:.875rem 1rem;font-size:.875rem;border-bottom:1px solid var(--border-light);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--off-white)}
+.upload-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:4rem 2rem;text-align:center;cursor:pointer;transition:all .2s;background:var(--off-white)}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--lime);background:var(--lime-bg)}
+.upload-icon{font-size:2.5rem;margin-bottom:.75rem}
+.upload-title{font-weight:700;margin-bottom:.35rem}
+.upload-sub{font-size:.85rem;color:var(--text-muted)}
+.mode-tabs{display:flex;gap:.35rem;background:var(--off-white);border:1px solid var(--border);padding:.3rem;border-radius:10px;width:fit-content;margin-bottom:1.5rem}
+.mode-tab{padding:.5rem 1.25rem;border-radius:8px;border:none;background:transparent;font-family:inherit;font-size:.875rem;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all .2s}
+.mode-tab.active{background:var(--white);color:var(--text);box-shadow:var(--shadow-sm)}
+.alert-item{display:flex;gap:1rem;align-items:flex-start;padding:1rem 1.25rem;border-radius:var(--radius-sm);margin-bottom:.75rem;border:1px solid}
+.alert-item:last-child{margin-bottom:0}
+.alert-item.danger{background:var(--danger-bg);border-color:#fecaca}
+.alert-item.warning{background:var(--warning-bg);border-color:#fde68a}
+.alert-item.success{background:var(--success-bg);border-color:#bbf7d0}
+.alert-icon{font-size:1.1rem;flex-shrink:0;padding-top:2px}
+.alert-content h4{font-size:.875rem;font-weight:700;margin-bottom:.2rem}
+.alert-content p{font-size:.82rem;color:var(--text-muted);line-height:1.5}
+.alert-price{font-size:.82rem;font-weight:700;color:var(--lime-dark);margin-top:.3rem}
+.contract-item{display:flex;align-items:center;gap:1rem;padding:.9rem 1rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--white);margin-bottom:.65rem;transition:all .2s;cursor:pointer}
+.contract-item:hover{border-color:var(--lime);box-shadow:var(--shadow-sm)}
+.contract-item:last-child{margin-bottom:0}
+.contract-ico{width:36px;height:36px;border-radius:8px;background:var(--lime-bg);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
+.contract-info{flex:1;min-width:0}
+.contract-name{font-weight:600;font-size:.875rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.contract-meta{font-size:.775rem;color:var(--text-muted)}
+.contract-actions{display:flex;align-items:center;gap:.5rem;flex-shrink:0}
+.severity-bar{display:flex;align-items:center;gap:1rem;padding:1.25rem 1.5rem;background:var(--danger-bg);border:1px solid #fecaca;border-radius:var(--radius);margin-bottom:1.5rem}
+.severity-bar h3{font-size:1rem;font-weight:700;color:var(--danger)}
+.severity-bar p{font-size:.82rem;color:var(--text-muted)}
+.severity-amount{margin-left:auto;font-size:1.5rem;font-weight:800;color:var(--danger)}
+.response-box{background:var(--off-white);border:1.5px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.response-header{display:flex;justify-content:space-between;align-items:center;padding:.875rem 1.25rem;border-bottom:1px solid var(--border);background:var(--white)}
+.response-header h4{font-weight:700;font-size:.875rem}
+.response-body{padding:1.25rem;font-family:'DM Mono',monospace;font-size:.82rem;line-height:1.75;color:var(--text);white-space:pre-wrap;max-height:420px;overflow-y:auto}
+.progress-bar{height:6px;background:var(--border);border-radius:10px;overflow:hidden;margin-top:.4rem}
+.progress-fill{height:100%;background:var(--lime);border-radius:10px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:.875rem 0;border-bottom:1px solid var(--border-light)}
+.toggle-row:last-child{border-bottom:none}
+.toggle-info h5{font-size:.875rem;font-weight:600}
+.toggle-info p{font-size:.78rem;color:var(--text-muted)}
+.toggle{position:relative;width:40px;height:22px;cursor:pointer;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:var(--border);border-radius:22px;transition:.3s}
+.slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:white;border-radius:50%;transition:.3s;box-shadow:var(--shadow-sm)}
+.toggle input:checked+.slider{background:var(--lime)}
+.toggle input:checked+.slider::before{transform:translateX(18px)}
+
+/* Loading overlay */
+.ai-loading{display:none;flex-direction:column;align-items:center;justify-content:center;padding:4rem 2rem;gap:1.5rem;text-align:center}
+.ai-loading.show{display:flex}
+.ai-spinner{width:48px;height:48px;border:3px solid var(--lime-light);border-top-color:var(--lime-dark);border-radius:50%;animation:spin .8s linear infinite}
+.ai-loading h4{font-size:1.1rem;font-weight:700}
+.ai-loading p{font-size:.875rem;color:var(--text-muted)}
+
+/* Empty state */
+.empty-state{text-align:center;padding:3rem 2rem;color:var(--text-muted)}
+.empty-state .ei{font-size:2.5rem;margin-bottom:.75rem}
+.empty-state h4{font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:.35rem}
+.empty-state p{font-size:.85rem}
+
+@media(max-width:900px){.steps-grid{grid-template-columns:1fr 1fr}.pricing-grid{grid-template-columns:1fr}.stats-row{grid-template-columns:1fr 1fr}.grid-2{grid-template-columns:1fr}}
+@media(max-width:700px){.db-sidebar{display:none}.steps-grid{grid-template-columns:1fr}.stats-row{grid-template-columns:1fr}.hero h1{font-size:2rem}}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════
+     LANDING
+══════════════════════════════════ -->
+<div id="page-landing" class="page active">
+  <header class="topbar">
+    <div class="logo" onclick="go('landing')"><div class="logo-mark">SG</div><span class="logo-text">ScopeGuard</span></div>
+    <nav class="topbar-nav"><a>How it works</a><a>Pricing</a></nav>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" onclick="go('login')">Sign in</button>
+      <button class="btn btn-lime" onclick="go('signup')">Start Free Trial</button>
+    </div>
+  </header>
+  <section class="hero">
+    <div class="hero-badge">✦ AI-Powered Scope Protection for Freelancers</div>
+    <h1>Stop losing money to <span>scope creep</span></h1>
+    <p>ScopeGuard watches your contracts and client emails in real-time. The moment a client asks for extra work, you get an instant alert — with a ready-to-send response.</p>
+    <div class="hero-cta">
+      <button class="btn btn-lime btn-lg" onclick="go('signup')">Start 7-Day Free Trial</button>
+      <button class="btn btn-outline btn-lg" onclick="go('signup')">View Demo →</button>
+    </div>
+    <div class="hero-stats">
+      <div class="hero-stat"><span class="val">$15,600</span><span class="lbl">Lost per freelancer/year</span></div>
+      <div class="hero-stat"><span class="val">99%</span><span class="lbl">Fail to bill scope creep</span></div>
+      <div class="hero-stat"><span class="val">1 alert</span><span class="lbl">Pays for a full year</span></div>
+      <div class="hero-stat"><span class="val">From $9</span><span class="lbl">Per month</span></div>
+    </div>
+  </section>
+  <div class="hiw"><div class="hiw-inner">
+    <p class="section-tag">How it works</p>
+    <h2 class="section-title">From contract to alert in seconds</h2>
+    <div class="steps-grid">
+      <div class="step-card"><div class="step-num">1</div><h4>Upload Your Contract</h4><p>Paste text or upload a PDF. ScopeGuard indexes every deliverable, revision limit, and exclusion clause.</p></div>
+      <div class="step-card"><div class="step-num">2</div><h4>Connect Your Email</h4><p>Link Gmail or Outlook. We watch every client message in real-time and flag anything that's off.</p></div>
+      <div class="step-card"><div class="step-num">3</div><h4>Get Instant Alerts</h4><p>The moment a client asks for extra work, you get an alert with full context and why it's out of scope.</p></div>
+      <div class="step-card"><div class="step-num">4</div><h4>Send the Response</h4><p>We generate a professional email with the recommended charge. One click — you get paid for extra work.</p></div>
+    </div>
+  </div></div>
+  <div class="pricing-section"><div class="pricing-inner">
+    <p class="section-tag">Pricing</p>
+    <h2 class="section-title" style="margin-bottom:.5rem">Simple, honest pricing</h2>
+    <p style="color:var(--text-muted);margin-bottom:3rem">One scope alert pays for a full year of ScopeGuard.</p>
+    <div class="pricing-grid">
+      <div class="pricing-card"><div class="pricing-name">Lite</div><div class="pricing-price">$9<span>/mo</span></div><div class="pricing-desc">Getting started</div><ul class="feature-list"><li><span class="fcheck">✓</span>1 active contract</li><li><span class="fcheck">✓</span>Email forwarding alerts</li><li><span class="fcheck">✓</span>Basic AI analysis</li><li><span class="fcheck">✓</span>Ready-to-send responses</li></ul><button class="btn btn-outline btn-full" onclick="go('signup')">Get Started</button></div>
+      <div class="pricing-card popular"><div class="popular-tag">Most Popular</div><div class="pricing-name">Pro</div><div class="pricing-price">$19<span>/mo</span></div><div class="pricing-desc">Full-time freelancers</div><ul class="feature-list"><li><span class="fcheck">✓</span>5 active contracts</li><li><span class="fcheck">✓</span>Gmail auto-sync</li><li><span class="fcheck">✓</span>Advanced AI analysis</li><li><span class="fcheck">✓</span>Analytics dashboard</li><li><span class="fcheck">✓</span>Change order generator</li></ul><button class="btn btn-lime btn-full" onclick="go('signup')">Start Free Trial</button></div>
+      <div class="pricing-card"><div class="pricing-name">Agency</div><div class="pricing-price">$49<span>/mo</span></div><div class="pricing-desc">Teams & agencies</div><ul class="feature-list"><li><span class="fcheck">✓</span>Unlimited contracts</li><li><span class="fcheck">✓</span>Gmail + Slack sync</li><li><span class="fcheck">✓</span>5 team seats</li><li><span class="fcheck">✓</span>White-label reports</li><li><span class="fcheck">✓</span>Priority support</li></ul><button class="btn btn-outline btn-full" onclick="go('signup')">Get Started</button></div>
+    </div>
+  </div></div>
+  <footer class="landing-footer">© 2026 ScopeGuard · Built for freelancers · <a href="#">Privacy</a> · <a href="#">Terms</a></footer>
+</div>
+
+<!-- ══════════════════════════════════
+     SIGNUP
+══════════════════════════════════ -->
+<div id="page-signup" class="page">
+  <header class="topbar">
+    <div class="logo" onclick="go('landing')"><div class="logo-mark">SG</div><span class="logo-text">ScopeGuard</span></div>
+    <div class="topbar-actions"><span style="font-size:.875rem;color:var(--text-muted)">Already have an account?</span><button class="btn btn-outline btn-sm" onclick="go('login')">Sign in</button></div>
+  </header>
+  <div class="auth-wrap">
+    <div class="auth-box">
+      <h2>Create your account</h2>
+      <p class="auth-subtitle">Start your 7-day free trial. No credit card required.</p>
+      <div id="signup-error" class="auth-error"></div>
+      <div class="field"><label class="form-label">Full Name</label><input class="input" id="signup-name" type="text" placeholder="Your name"></div>
+      <div class="field"><label class="form-label">Email Address</label><input class="input" id="signup-email" type="email" placeholder="you@example.com"></div>
+      <div class="field"><label class="form-label">Password</label><input class="input" id="signup-password" type="password" placeholder="At least 6 characters"></div>
+      <div class="field"><label class="form-label">Profession</label><input class="input" id="signup-profession" type="text" placeholder="e.g. Freelance Designer, Developer"><span class="form-hint">Helps us tailor your alerts</span></div>
+      <button class="btn btn-lime btn-full btn-lg" id="signup-btn" onclick="doSignup()">Create Account →</button>
+      <p class="auth-switch">Already have an account? <a onclick="go('login')">Sign in</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     LOGIN
+══════════════════════════════════ -->
+<div id="page-login" class="page">
+  <header class="topbar">
+    <div class="logo" onclick="go('landing')"><div class="logo-mark">SG</div><span class="logo-text">ScopeGuard</span></div>
+    <div class="topbar-actions"><span style="font-size:.875rem;color:var(--text-muted)">New to ScopeGuard?</span><button class="btn btn-lime btn-sm" onclick="go('signup')">Sign up free</button></div>
+  </header>
+  <div class="auth-wrap">
+    <div class="auth-box">
+      <h2>Welcome back</h2>
+      <p class="auth-subtitle">Sign in to your ScopeGuard account.</p>
+      <div id="login-error" class="auth-error"></div>
+      <div class="field"><label class="form-label">Email Address</label><input class="input" id="login-email" type="email" placeholder="you@example.com"></div>
+      <div class="field"><label class="form-label">Password</label><input class="input" id="login-password" type="password" placeholder="Your password"><span class="form-hint"><a href="#" style="color:var(--lime-dark)">Forgot password?</a></span></div>
+      <button class="btn btn-lime btn-full btn-lg" id="login-btn" onclick="doLogin()">Sign In →</button>
+      <p class="auth-switch">Don't have an account? <a onclick="go('signup')">Sign up free</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     DASHBOARD
+══════════════════════════════════ -->
+<div id="page-dashboard" class="page">
+  <header class="db-topbar">
+    <div class="logo" onclick="go('landing')"><div class="logo-mark">SG</div><span class="logo-text">ScopeGuard</span></div>
+    <div class="db-topbar-right">
+      <div class="notif-btn">🔔<div class="notif-dot" id="notif-dot" style="display:none"></div></div>
+      <div class="avatar" id="user-avatar">?</div>
+      <button class="btn btn-ghost btn-sm" onclick="doLogout()">Sign out</button>
+    </div>
+  </header>
+
+  <div class="db-shell">
+    <aside class="db-sidebar">
+      <button class="nav-item active" onclick="showPanel('overview',this)"><span class="nav-icon">📊</span>Overview</button>
+      <button class="nav-item" onclick="showPanel('analyze',this)"><span class="nav-icon">🔍</span>New Analysis</button>
+      <button class="nav-item" onclick="showPanel('alerts',this)"><span class="nav-icon">⚠️</span>Alerts<span class="badge badge-danger nav-badge" id="alerts-badge" style="display:none">0</span></button>
+      <button class="nav-item" onclick="showPanel('contracts',this)"><span class="nav-icon">📋</span>Contracts</button>
+      <button class="nav-item" onclick="showPanel('analytics',this)"><span class="nav-icon">📈</span>Analytics</button>
+      <div class="sidebar-label">Account</div>
+      <button class="nav-item" onclick="showPanel('settings',this)"><span class="nav-icon">⚙️</span>Settings</button>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-plan"><p>Pro Plan · Active</p><span>AI analysis ready</span></div>
+    </aside>
+
+    <main class="db-main">
+
+      <!-- OVERVIEW -->
+      <div id="panel-overview" class="db-panel active">
+        <div class="panel-header">
+          <div><h2>Overview</h2><p>Your scope protection summary</p></div>
+          <div class="panel-header-actions"><button class="btn btn-lime" onclick="showPanel('analyze',null)">+ New Analysis</button></div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-tile"><div class="stat-label">Revenue Protected</div><div class="stat-value" id="stat-revenue" style="color:var(--lime-dark)">$0</div><div class="stat-sub">Across all analyses</div></div>
+          <div class="stat-tile"><div class="stat-label">Alerts Caught</div><div class="stat-value" id="stat-alerts">0</div><div class="stat-sub" id="stat-alerts-sub">Run your first analysis</div></div>
+          <div class="stat-tile"><div class="stat-label">Active Contracts</div><div class="stat-value" id="stat-contracts">0</div><div class="stat-sub">Uploaded contracts</div></div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><div class="card-title">🚨 Recent Alerts</div><div id="overview-alerts-list"><div class="empty-state"><div class="ei">🔍</div><h4>No alerts yet</h4><p>Run an analysis to start catching scope creep</p></div></div><button class="btn btn-ghost btn-sm" style="margin-top:.75rem" onclick="showPanel('alerts',null)">View all →</button></div>
+          <div class="card"><div class="card-title">📋 Active Contracts</div><div id="overview-contracts-list"><div class="empty-state"><div class="ei">📋</div><h4>No contracts yet</h4><p>Upload your first contract to get started</p><button class="btn btn-lime btn-sm" style="margin-top:.75rem" onclick="showPanel('analyze',null)">Upload Contract</button></div></div></div>
+        </div>
+        <div class="card grid-1"><div class="card-title">Recent Analyses</div><div class="table-scroll"><table><thead><tr><th>Project</th><th>Date</th><th>Status</th><th>Extra Billed</th></tr></thead><tbody id="analyses-table"><tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:2rem">No analyses yet — run your first one!</td></tr></tbody></table></div></div>
+      </div>
+
+      <!-- NEW ANALYSIS -->
+      <div id="panel-analyze" class="db-panel">
+        <div class="panel-header"><div><h2>New Analysis</h2><p>Upload a contract or paste a client email to check for scope creep</p></div></div>
+        <div class="mode-tabs">
+          <button class="mode-tab active" onclick="switchMode('paste',this)">📝 Paste Contract</button>
+          <button class="mode-tab" onclick="switchMode('email',this)">📧 Analyze Email</button>
+        </div>
+
+        <!-- Paste Contract -->
+        <div id="mode-paste">
+          <div class="card">
+            <div class="field"><label class="form-label">Project Name</label><input class="input" id="proj-name" type="text" placeholder="e.g. Logo Design for Acme Corp"></div>
+            <div class="field"><label class="form-label">Contract Text</label><textarea class="input" id="contract-text" style="min-height:220px" placeholder="Paste the full contract or agreement text here. Include scope, deliverables, revision limits, and exclusions..."></textarea></div>
+            <button class="btn btn-lime btn-lg" id="analyze-contract-btn" onclick="analyzeContract()">Analyze Contract with AI →</button>
+          </div>
+        </div>
+
+        <!-- Analyze Email -->
+        <div id="mode-email" style="display:none">
+          <div class="card">
+            <div class="field"><label class="form-label">Client Email / Message</label><textarea class="input" id="email-text" style="min-height:180px" placeholder="Paste the client email or Slack message to check for scope creep..."></textarea></div>
+            <div class="field"><label class="form-label">Select Saved Contract</label><select class="input" id="email-contract-select"><option value="">— Select a contract —</option></select><span class="form-hint">Or describe the scope below if no contract saved yet</span></div>
+            <div class="field"><label class="form-label">Manual Scope Description (if no contract selected)</label><input class="input" id="manual-scope" type="text" placeholder="e.g. 5 logo concepts, 3 revisions, delivered as AI/PNG/JPG"></div>
+            <button class="btn btn-lime btn-lg" id="analyze-email-btn" onclick="analyzeEmail()">Check for Scope Creep →</button>
+          </div>
+        </div>
+
+        <!-- AI Loading -->
+        <div class="card" id="ai-loading-card" style="display:none">
+          <div class="ai-loading show">
+            <div class="ai-spinner"></div>
+            <h4>AI is analyzing your content...</h4>
+            <p id="loading-msg">Reading contract clauses and deliverables</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ALERTS / RESULTS -->
+      <div id="panel-alerts" class="db-panel">
+        <div class="panel-header">
+          <div><h2>Scope Alerts</h2><p id="alerts-subtitle">Your latest analysis results</p></div>
+          <div class="panel-header-actions"><button class="btn btn-outline btn-sm" onclick="showPanel('analyze',null)">+ New Analysis</button></div>
+        </div>
+        <div id="alerts-content">
+          <div class="empty-state"><div class="ei">⚠️</div><h4>No alerts yet</h4><p>Run an analysis to start detecting scope creep</p><button class="btn btn-lime btn-sm" style="margin-top:.75rem" onclick="showPanel('analyze',null)">Run Analysis</button></div>
+        </div>
+      </div>
+
+      <!-- CONTRACTS -->
+      <div id="panel-contracts" class="db-panel">
+        <div class="panel-header"><div><h2>Contracts</h2><p>All your uploaded client contracts</p></div><button class="btn btn-lime" onclick="showPanel('analyze',null)">+ Upload Contract</button></div>
+        <div class="card"><div id="contracts-list"><div class="empty-state"><div class="ei">📋</div><h4>No contracts yet</h4><p>Upload your first contract to start protecting your scope</p><button class="btn btn-lime btn-sm" style="margin-top:.75rem" onclick="showPanel('analyze',null)">Upload Contract</button></div></div></div>
+      </div>
+
+      <!-- ANALYTICS -->
+      <div id="panel-analytics" class="db-panel">
+        <div class="panel-header"><div><h2>Analytics</h2><p>Track how much scope creep you're catching</p></div></div>
+        <div class="stats-row">
+          <div class="stat-tile"><div class="stat-label">Total Revenue Protected</div><div class="stat-value" id="ana-revenue" style="color:var(--lime-dark)">$0</div><div class="stat-sub">Across all projects</div></div>
+          <div class="stat-tile"><div class="stat-label">Analyses Run</div><div class="stat-value" id="ana-analyses">0</div><div class="stat-sub">Total checks done</div></div>
+          <div class="stat-tile"><div class="stat-label">Avg Per Alert</div><div class="stat-value" id="ana-avg">$0</div><div class="stat-sub">Average extra billed</div></div>
+        </div>
+        <div class="card"><div class="card-title">All Analyses</div><div class="table-scroll"><table><thead><tr><th>Project</th><th>Type</th><th>Date</th><th>Out-of-Scope Items</th><th>Value</th></tr></thead><tbody id="analytics-table"><tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">No data yet</td></tr></tbody></table></div></div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div id="panel-settings" class="db-panel">
+        <div class="panel-header"><div><h2>Settings</h2><p>Manage your account</p></div></div>
+        <div style="max-width:620px;display:flex;flex-direction:column;gap:1.25rem">
+          <div class="card">
+            <h3 style="font-weight:700;margin-bottom:1.25rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)">Account Details</h3>
+            <div class="field"><label class="form-label">Full Name</label><input class="input" id="settings-name" type="text"></div>
+            <div class="field"><label class="form-label">Email</label><input class="input" id="settings-email" type="email" disabled style="opacity:.7"></div>
+            <div class="field"><label class="form-label">Profession</label><input class="input" id="settings-profession" type="text"></div>
+            <button class="btn btn-lime" onclick="saveSettings()">Save Changes</button>
+          </div>
+          <div class="card">
+            <h3 style="font-weight:700;margin-bottom:1.25rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)">Notifications</h3>
+            <div class="toggle-row"><div class="toggle-info"><h5>Email Alerts</h5><p>Get emailed when scope creep is detected</p></div><label class="toggle"><input type="checkbox" checked><span class="slider"></span></label></div>
+            <div class="toggle-row"><div class="toggle-info"><h5>Weekly Summary</h5><p>Weekly digest of all scope creep caught</p></div><label class="toggle"><input type="checkbox" checked><span class="slider"></span></label></div>
+          </div>
+          <div class="card">
+            <h3 style="font-weight:700;margin-bottom:1.25rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)">Integrations</h3>
+            <div class="toggle-row"><div class="toggle-info"><h5>Gmail</h5><p>Auto-read client emails in real-time</p></div><button class="btn btn-outline btn-sm">Coming Soon</button></div>
+            <div class="toggle-row"><div class="toggle-info"><h5>Slack</h5><p>Receive alerts in Slack DMs</p></div><button class="btn btn-outline btn-sm">Coming Soon</button></div>
+          </div>
+          <div class="card">
+            <h3 style="font-weight:700;margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--border);color:var(--danger)">Danger Zone</h3>
+            <button class="btn btn-danger btn-sm" onclick="doLogout()">Sign Out</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════
+// CONFIG
+// ════════════════════════════════
+const SUPABASE_URL = 'https://qmbrotregejiyntnmron.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtYnJvdHJlZ2VqaXludG5tcm9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNjk1ODcsImV4cCI6MjA5Mjk0NTU4N30.aX9DkHei74KJC6I3x83plZIjZzevEyTM-9mN3bawDKo';
+// Claude API key is stored securely in Vercel environment variables — never expose it here
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let currentUser = null;
+let currentAnalysis = null;
+let userContracts = [];
+let userAnalyses = [];
+
+// ════════════════════════════════
+// INIT — Check session on load
+// ════════════════════════════════
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
+    currentUser = session.user;
+    await loadDashboard();
+    go('dashboard');
+  }
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      currentUser = session.user;
+      await loadDashboard();
+      go('dashboard');
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      go('landing');
+    }
+  });
+})();
+
+// ════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════
+function go(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function showPanel(name, btn) {
+  document.querySelectorAll('.db-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('panel-' + name);
+  if (panel) panel.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (name === 'contracts') renderContracts();
+  if (name === 'analytics') renderAnalytics();
+  if (name === 'overview') renderOverview();
+}
+
+function switchMode(name, btn) {
+  ['paste','email'].forEach(m => {
+    const el = document.getElementById('mode-' + m);
+    if (el) el.style.display = m === name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+// ════════════════════════════════
+// TOAST
+// ════════════════════════════════
+function toast(msg, type = 'default', duration = 3500) {
+  const container = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = `toast-item ${type}`;
+  const icons = { success: '✅', error: '❌', warning: '⚠️', default: 'ℹ️' };
+  el.innerHTML = `<span>${icons[type] || icons.default}</span><span>${msg}</span>`;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, duration);
+}
+
+// ════════════════════════════════
+// AUTH
+// ════════════════════════════════
+async function doSignup() {
+  const name = document.getElementById('signup-name').value.trim();
+  const email = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+  const profession = document.getElementById('signup-profession').value.trim();
+  const errEl = document.getElementById('signup-error');
+  const btn = document.getElementById('signup-btn');
+
+  if (!name || !email || !password) { showAuthError(errEl, 'Please fill in all required fields.'); return; }
+  if (password.length < 6) { showAuthError(errEl, 'Password must be at least 6 characters.'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Creating account...';
+  errEl.style.display = 'none';
+
+  const { data, error } = await sb.auth.signUp({
+    email, password,
+    options: { data: { full_name: name, profession } }
+  });
+
+  if (error) { showAuthError(errEl, error.message); btn.disabled = false; btn.innerHTML = 'Create Account →'; return; }
+
+  // Create profile row
+  if (data.user) {
+    await sb.from('profiles').upsert({ id: data.user.id, full_name: name, email, profession, created_at: new Date().toISOString() });
+  }
+
+  toast('Account created! Welcome to ScopeGuard 🎉', 'success');
+  btn.innerHTML = 'Create Account →'; btn.disabled = false;
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+
+  if (!email || !password) { showAuthError(errEl, 'Please enter your email and password.'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Signing in...';
+  errEl.style.display = 'none';
+
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { showAuthError(errEl, error.message); btn.disabled = false; btn.innerHTML = 'Sign In →'; return; }
+
+  toast('Welcome back! 👋', 'success');
+  btn.innerHTML = 'Sign In →'; btn.disabled = false;
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  toast('Signed out successfully.', 'default');
+  go('landing');
+}
+
+function showAuthError(el, msg) {
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ════════════════════════════════
+// LOAD DASHBOARD DATA
+// ════════════════════════════════
+async function loadDashboard() {
+  if (!currentUser) return;
+
+  // Set avatar initials
+  const meta = currentUser.user_metadata;
+  const name = meta?.full_name || currentUser.email;
+  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  document.getElementById('user-avatar').textContent = initials;
+
+  // Load settings fields
+  document.getElementById('settings-name').value = meta?.full_name || '';
+  document.getElementById('settings-email').value = currentUser.email;
+  document.getElementById('settings-profession').value = meta?.profession || '';
+
+  // Load contracts from Supabase
+  const { data: contracts } = await sb.from('contracts').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+  userContracts = contracts || [];
+
+  // Load analyses from Supabase
+  const { data: analyses } = await sb.from('analyses').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+  userAnalyses = analyses || [];
+
+  // Populate contract dropdown
+  const sel = document.getElementById('email-contract-select');
+  sel.innerHTML = '<option value="">— Select a contract —</option>';
+  userContracts.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.project_name;
+    sel.appendChild(opt);
+  });
+
+  renderOverview();
+}
+
+// ════════════════════════════════
+// RENDER OVERVIEW
+// ════════════════════════════════
+function renderOverview() {
+  const totalRevenue = userAnalyses.reduce((sum, a) => sum + (a.estimated_value || 0), 0);
+  const totalAlerts = userAnalyses.reduce((sum, a) => sum + (a.out_of_scope_count || 0), 0);
+
+  document.getElementById('stat-revenue').textContent = '$' + totalRevenue.toLocaleString();
+  document.getElementById('stat-alerts').textContent = totalAlerts;
+  document.getElementById('stat-contracts').textContent = userContracts.length;
+
+  // Alerts badge
+  const badge = document.getElementById('alerts-badge');
+  if (totalAlerts > 0) { badge.textContent = totalAlerts; badge.style.display = 'inline-flex'; document.getElementById('notif-dot').style.display = 'block'; }
+
+  // Recent alerts list
+  const alertsList = document.getElementById('overview-alerts-list');
+  const alertAnalyses = userAnalyses.filter(a => a.out_of_scope_count > 0).slice(0, 3);
+  if (alertAnalyses.length === 0) {
+    alertsList.innerHTML = '<div class="empty-state"><div class="ei">🔍</div><h4>No alerts yet</h4><p>Run an analysis to start catching scope creep</p></div>';
+  } else {
+    alertsList.innerHTML = alertAnalyses.map(a => `
+      <div class="alert-item danger" style="cursor:pointer" onclick="showAlertDetail('${a.id}')">
+        <div class="alert-icon">⚠️</div>
+        <div class="alert-content"><h4>${a.project_name}</h4><p>${a.out_of_scope_count} out-of-scope item${a.out_of_scope_count > 1 ? 's' : ''} detected</p><div class="alert-price">+ $${(a.estimated_value || 0).toLocaleString()} recommended</div></div>
+      </div>`).join('');
+  }
+
+  // Contracts list
+  const contractsList = document.getElementById('overview-contracts-list');
+  if (userContracts.length === 0) {
+    contractsList.innerHTML = '<div class="empty-state"><div class="ei">📋</div><h4>No contracts yet</h4><p>Upload your first contract</p><button class="btn btn-lime btn-sm" style="margin-top:.75rem" onclick="showPanel(\'analyze\',null)">Upload Contract</button></div>';
+  } else {
+    contractsList.innerHTML = userContracts.slice(0, 4).map(c => {
+      const contractAlerts = userAnalyses.filter(a => a.contract_id === c.id).reduce((s, a) => s + (a.out_of_scope_count || 0), 0);
+      const badge = contractAlerts > 0 ? `<span class="badge badge-danger">⚠️ ${contractAlerts}</span>` : '<span class="badge badge-success">✓ OK</span>';
+      return `<div class="contract-item"><div class="contract-ico">📋</div><div class="contract-info"><div class="contract-name">${c.project_name}</div><div class="contract-meta">${contractAlerts} alerts · ${timeAgo(c.created_at)}</div></div><div class="contract-actions">${badge}</div></div>`;
+    }).join('');
+  }
+
+  // Analyses table
+  const tbody = document.getElementById('analyses-table');
+  if (userAnalyses.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:2rem">No analyses yet — run your first one!</td></tr>';
+  } else {
+    tbody.innerHTML = userAnalyses.slice(0, 10).map(a => {
+      const hasAlerts = a.out_of_scope_count > 0;
+      const badge = hasAlerts ? '<span class="badge badge-danger">⚠️ Scope Creep</span>' : '<span class="badge badge-success">✓ In Scope</span>';
+      const val = hasAlerts ? `<span style="color:var(--success);font-weight:700">+$${(a.estimated_value||0).toLocaleString()}</span>` : '<span style="color:var(--text-muted)">—</span>';
+      return `<tr style="cursor:pointer" onclick="showAlertDetail('${a.id}')"><td><strong>${a.project_name}</strong></td><td>${timeAgo(a.created_at)}</td><td>${badge}</td><td>${val}</td></tr>`;
+    }).join('');
+  }
+}
+
+// ════════════════════════════════
+// ANALYZE CONTRACT (AI)
+// ════════════════════════════════
+async function analyzeContract() {
+  const projectName = document.getElementById('proj-name').value.trim();
+  const contractText = document.getElementById('contract-text').value.trim();
+  if (!projectName) { toast('Please enter a project name.', 'warning'); return; }
+  if (!contractText || contractText.length < 50) { toast('Please paste your contract text (at least 50 characters).', 'warning'); return; }
+
+  showLoading('Reading contract and extracting scope...');
+
+  const prompt = `You are an expert freelance contract analyzer. Analyze this contract and extract the key scope information.
+
+CONTRACT TEXT:
+${contractText}
+
+Respond ONLY with valid JSON in this exact format (no markdown, no backticks):
+{
+  "summary": "2-3 sentence plain-English summary of what was agreed",
+  "deliverables": ["list", "of", "deliverables"],
+  "revisions": "description of revision limits included",
+  "exclusions": ["list", "of", "what", "is", "NOT", "included"],
+  "payment_terms": "payment terms summary",
+  "risk_flags": ["any", "concerning", "clauses", "for", "the", "freelancer"],
+  "project_type": "type of project in 3 words"
+}`;
+
+  try {
+    const result = await callClaude(prompt);
+    let parsed;
+    try { parsed = JSON.parse(result); } catch { parsed = { summary: result, deliverables: [], exclusions: [], risk_flags: [], revisions: 'Not specified', payment_terms: 'Not specified', project_type: 'General Project' }; }
+
+    // Save contract to Supabase
+    const { data: contract, error } = await sb.from('contracts').insert({
+      user_id: currentUser.id,
+      project_name: projectName,
+      contract_text: contractText,
+      summary: parsed.summary,
+      deliverables: parsed.deliverables,
+      revisions: parsed.revisions,
+      exclusions: parsed.exclusions,
+      payment_terms: parsed.payment_terms,
+      risk_flags: parsed.risk_flags,
+      created_at: new Date().toISOString()
+    }).select().single();
+
+    if (error) throw error;
+
+    userContracts.unshift(contract);
+
+    // Update dropdown
+    const sel = document.getElementById('email-contract-select');
+    const opt = document.createElement('option');
+    opt.value = contract.id;
+    opt.textContent = projectName;
+    sel.insertBefore(opt, sel.children[1]);
+
+    hideLoading();
+    toast('Contract analyzed and saved! ✅', 'success');
+
+    // Show contract summary
+    showContractSummary(contract, parsed);
+
+  } catch (err) {
+    hideLoading();
+    toast('Analysis failed: ' + err.message, 'error');
+  }
+}
+
+function showContractSummary(contract, parsed) {
+  const alertsContent = document.getElementById('alerts-content');
+  const flags = (parsed.risk_flags || []).length > 0 ?
+    `<div class="card" style="margin-bottom:1.25rem"><div class="card-title">🚩 Risk Flags Found in Contract</div>${parsed.risk_flags.map(f => `<div class="alert-item warning"><div class="alert-icon">⚠️</div><div class="alert-content"><h4>${f}</h4></div></div>`).join('')}</div>` : '';
+
+  alertsContent.innerHTML = `
+    <div style="margin-bottom:1.25rem;padding:1.25rem 1.5rem;background:var(--success-bg);border:1px solid #bbf7d0;border-radius:var(--radius);display:flex;align-items:center;gap:1rem">
+      <span style="font-size:1.5rem">✅</span>
+      <div><h3 style="font-size:1rem;font-weight:700;color:var(--success)">Contract Saved Successfully!</h3><p style="font-size:.875rem;color:var(--text-muted)">${contract.project_name} — Ready to analyze client emails against this contract</p></div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">📋 Contract Summary</div>
+        <p style="font-size:.875rem;color:var(--text-muted);margin-bottom:1rem">${parsed.summary}</p>
+        <strong style="font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Deliverables</strong>
+        <ul style="margin:.5rem 0 1rem 1rem;font-size:.875rem">${(parsed.deliverables || []).map(d => `<li>${d}</li>`).join('')}</ul>
+        <strong style="font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Revisions</strong>
+        <p style="font-size:.875rem;margin:.5rem 0 1rem">${parsed.revisions}</p>
+        <strong style="font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Exclusions</strong>
+        <ul style="margin:.5rem 0 0 1rem;font-size:.875rem">${(parsed.exclusions || []).map(e => `<li>${e}</li>`).join('')}</ul>
+      </div>
+      <div>
+        ${flags}
+        <div class="card">
+          <div class="card-title">🎯 Next Step</div>
+          <p style="font-size:.875rem;color:var(--text-muted);margin-bottom:1rem">Now paste a client email or message to check if they're asking for anything outside this contract.</p>
+          <button class="btn btn-lime btn-full" onclick="showPanel('analyze',null);switchMode('email',document.querySelector('.mode-tab:nth-child(2))'))">Analyze Client Email →</button>
+        </div>
+      </div>
+    </div>`;
+
+  showPanel('alerts', null);
+  renderOverview();
+}
+
+// ════════════════════════════════
+// ANALYZE EMAIL (AI)
+// ════════════════════════════════
+async function analyzeEmail() {
+  const emailText = document.getElementById('email-text').value.trim();
+  const contractId = document.getElementById('email-contract-select').value;
+  const manualScope = document.getElementById('manual-scope').value.trim();
+
+  if (!emailText || emailText.length < 20) { toast('Please paste a client email to analyze.', 'warning'); return; }
+  if (!contractId && !manualScope) { toast('Please select a saved contract or describe the original scope.', 'warning'); return; }
+
+  showLoading('Checking email for scope creep...');
+
+  let scopeContext = manualScope;
+  let projectName = 'Email Analysis';
+  let contractRow = null;
+
+  if (contractId) {
+    contractRow = userContracts.find(c => c.id === contractId);
+    if (contractRow) {
+      scopeContext = `Project: ${contractRow.project_name}
+Summary: ${contractRow.summary}
+Deliverables: ${(contractRow.deliverables || []).join(', ')}
+Revisions included: ${contractRow.revisions}
+Exclusions (NOT included): ${(contractRow.exclusions || []).join(', ')}`;
+      projectName = contractRow.project_name;
+    }
+  }
+
+  const prompt = `You are an expert at detecting scope creep in freelance projects.
+
+ORIGINAL CONTRACT / SCOPE:
+${scopeContext}
+
+CLIENT EMAIL / MESSAGE:
+${emailText}
+
+Carefully analyze what the client is requesting and determine if each request is in-scope, out-of-scope, or needs clarification.
+
+Respond ONLY with valid JSON (no markdown, no backticks):
+{
+  "project_name": "${projectName}",
+  "has_scope_creep": true or false,
+  "summary": "1-2 sentence summary of what the client is asking for",
+  "out_of_scope": [
+    {
+      "item": "name of the out-of-scope request",
+      "reason": "why this is out of scope",
+      "suggested_charge": 250
+    }
+  ],
+  "needs_clarification": [
+    {
+      "item": "ambiguous request",
+      "question": "what to ask the client"
+    }
+  ],
+  "in_scope": [
+    {
+      "item": "in-scope request",
+      "reason": "why this is in scope"
+    }
+  ],
+  "total_estimated_value": 850,
+  "suggested_response": "full professional email response to send to the client, with placeholders like [Client Name] and [Your Name], addressing each item. Be friendly but firm. Include specific dollar amounts for each out-of-scope item."
+}`;
+
+  try {
+    const result = await callClaude(prompt);
+    let parsed;
+    try { parsed = JSON.parse(result); } catch(e) {
+      hideLoading();
+      toast('AI returned unexpected format. Please try again.', 'error');
+      return;
+    }
+
+    // Save analysis to Supabase
+    const { data: analysis, error } = await sb.from('analyses').insert({
+      user_id: currentUser.id,
+      contract_id: contractId || null,
+      project_name: projectName,
+      analysis_type: 'email',
+      input_text: emailText,
+      result: parsed,
+      out_of_scope_count: (parsed.out_of_scope || []).length,
+      estimated_value: parsed.total_estimated_value || 0,
+      has_scope_creep: parsed.has_scope_creep || false,
+      created_at: new Date().toISOString()
+    }).select().single();
+
+    if (error) throw error;
+    userAnalyses.unshift(analysis);
+
+    hideLoading();
+    currentAnalysis = { ...analysis, result: parsed };
+    renderAlertDetail(parsed, projectName);
+    showPanel('alerts', null);
+    renderOverview();
+    toast(parsed.has_scope_creep ? '⚠️ Scope creep detected!' : '✅ Everything looks in scope!', parsed.has_scope_creep ? 'warning' : 'success');
+
+  } catch(err) {
+    hideLoading();
+    toast('Analysis failed: ' + err.message, 'error');
+  }
+}
+
+// ════════════════════════════════
+// RENDER ALERT DETAIL
+// ════════════════════════════════
+function renderAlertDetail(parsed, projectName) {
+  const content = document.getElementById('alerts-content');
+  document.getElementById('alerts-subtitle').textContent = `${projectName} · just now`;
+
+  const outItems = parsed.out_of_scope || [];
+  const clarItems = parsed.needs_clarification || [];
+  const inItems = parsed.in_scope || [];
+
+  const severityBar = parsed.has_scope_creep ? `
+    <div class="severity-bar">
+      <span style="font-size:1.5rem">🚨</span>
+      <div><h3>Scope Creep Detected!</h3><p>${outItems.length} out-of-scope request${outItems.length !== 1 ? 's' : ''} found</p></div>
+      <div class="severity-amount">+$${(parsed.total_estimated_value || 0).toLocaleString()}</div>
+    </div>` : `
+    <div style="display:flex;align-items:center;gap:1rem;padding:1.25rem 1.5rem;background:var(--success-bg);border:1px solid #bbf7d0;border-radius:var(--radius);margin-bottom:1.5rem">
+      <span style="font-size:1.5rem">✅</span>
+      <div><h3 style="color:var(--success);font-size:1rem;font-weight:700">All requests are in scope!</h3><p style="font-size:.875rem;color:var(--text-muted)">No scope creep detected in this email.</p></div>
+    </div>`;
+
+  const outSection = outItems.length > 0 ? `
+    <div class="card" style="margin-bottom:1.25rem">
+      <div class="card-title">🚨 Out-of-Scope Requests</div>
+      ${outItems.map(i => `<div class="alert-item danger"><div class="alert-icon">❌</div><div class="alert-content"><h4>${i.item}</h4><p>${i.reason}</p><div class="alert-price">💰 Recommend charging: $${(i.suggested_charge || 0).toLocaleString()}</div></div></div>`).join('')}
+    </div>` : '';
+
+  const clarSection = clarItems.length > 0 ? `
+    <div class="card" style="margin-bottom:1.25rem">
+      <div class="card-title">🟡 Needs Clarification</div>
+      ${clarItems.map(i => `<div class="alert-item warning"><div class="alert-icon">🟡</div><div class="alert-content"><h4>${i.item}</h4><p>${i.question}</p></div></div>`).join('')}
+    </div>` : '';
+
+  const inSection = inItems.length > 0 ? `
+    <div class="card" style="margin-bottom:1.25rem">
+      <div class="card-title">✅ Confirmed In-Scope</div>
+      ${inItems.map(i => `<div class="alert-item success"><div class="alert-icon">✅</div><div class="alert-content"><h4>${i.item}</h4><p>${i.reason}</p></div></div>`).join('')}
+    </div>` : '';
+
+  const responseSection = parsed.suggested_response ? `
+    <div class="card">
+      <div class="card-title">📧 Suggested Client Response</div>
+      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:1rem">AI-generated reply — copy and send to your client:</p>
+      <div class="response-box">
+        <div class="response-header"><h4>Draft Reply</h4><button class="btn btn-lime btn-sm" id="copy-btn" onclick="copyResp()">Copy</button></div>
+        <div class="response-body" id="response-text">${parsed.suggested_response}</div>
+      </div>
+    </div>` : '';
+
+  content.innerHTML = `
+    ${severityBar}
+    <div class="grid-2">
+      <div>${outSection}${clarSection}${inSection}</div>
+      <div>${responseSection}</div>
+    </div>`;
+}
+
+function showAlertDetail(analysisId) {
+  const analysis = userAnalyses.find(a => a.id === analysisId);
+  if (!analysis) return;
+  renderAlertDetail(analysis.result, analysis.project_name);
+  showPanel('alerts', null);
+}
+
+// ════════════════════════════════
+// RENDER CONTRACTS
+// ════════════════════════════════
+function renderContracts() {
+  const list = document.getElementById('contracts-list');
+  if (userContracts.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="ei">📋</div><h4>No contracts yet</h4><p>Upload your first contract to start protecting your scope</p><button class="btn btn-lime btn-sm" style="margin-top:.75rem" onclick="showPanel(\'analyze\',null)">Upload Contract</button></div>';
+    return;
+  }
+  list.innerHTML = userContracts.map(c => {
+    const alerts = userAnalyses.filter(a => a.contract_id === c.id).reduce((s, a) => s + (a.out_of_scope_count || 0), 0);
+    const badge = alerts > 0 ? `<span class="badge badge-danger">⚠️ ${alerts}</span>` : '<span class="badge badge-success">✓ Clean</span>';
+    return `<div class="contract-item"><div class="contract-ico">📋</div><div class="contract-info"><div class="contract-name">${c.project_name}</div><div class="contract-meta">${alerts} alerts · ${timeAgo(c.created_at)}</div></div><div class="contract-actions">${badge}<button class="btn btn-ghost btn-sm">View →</button></div></div>`;
+  }).join('');
+}
+
+// ════════════════════════════════
+// RENDER ANALYTICS
+// ════════════════════════════════
+function renderAnalytics() {
+  const totalRevenue = userAnalyses.reduce((s, a) => s + (a.estimated_value || 0), 0);
+  const totalAnalyses = userAnalyses.length;
+  const billed = userAnalyses.filter(a => a.estimated_value > 0);
+  const avg = billed.length > 0 ? Math.round(totalRevenue / billed.length) : 0;
+
+  document.getElementById('ana-revenue').textContent = '$' + totalRevenue.toLocaleString();
+  document.getElementById('ana-analyses').textContent = totalAnalyses;
+  document.getElementById('ana-avg').textContent = '$' + avg.toLocaleString();
+
+  const tbody = document.getElementById('analytics-table');
+  if (userAnalyses.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">No data yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = userAnalyses.map(a => {
+    const badge = a.has_scope_creep ? '<span class="badge badge-danger">⚠️ Scope Creep</span>' : '<span class="badge badge-success">✓ In Scope</span>';
+    const val = a.estimated_value > 0 ? `<span style="color:var(--success);font-weight:700">+$${a.estimated_value.toLocaleString()}</span>` : '<span style="color:var(--text-muted)">—</span>';
+    return `<tr><td><strong>${a.project_name}</strong></td><td style="text-transform:capitalize">${a.analysis_type}</td><td>${timeAgo(a.created_at)}</td><td>${a.out_of_scope_count}</td><td>${val}</td></tr>`;
+  }).join('');
+}
+
+// ════════════════════════════════
+// SETTINGS SAVE
+// ════════════════════════════════
+async function saveSettings() {
+  const name = document.getElementById('settings-name').value.trim();
+  const profession = document.getElementById('settings-profession').value.trim();
+  await sb.auth.updateUser({ data: { full_name: name, profession } });
+  await sb.from('profiles').upsert({ id: currentUser.id, full_name: name, profession });
+  toast('Settings saved! ✅', 'success');
+  document.getElementById('user-avatar').textContent = name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
+}
+
+// ════════════════════════════════
+// CLAUDE API CALL
+// ════════════════════════════════
+async function callClaude(prompt) {
+  // Calls our Vercel serverless function — no CORS issues
+  const response = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, max_tokens: 2000 })
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'API request failed');
+  }
+  const data = await response.json();
+  if (data.error) throw new Error(data.error);
+  return data.text;
+}
+
+// ════════════════════════════════
+// LOADING HELPERS
+// ════════════════════════════════
+const loadingMessages = [
+  'Reading contract clauses and deliverables...',
+  'Comparing client request against scope...',
+  'Identifying out-of-scope items...',
+  'Calculating recommended charges...',
+  'Generating your response email...'
+];
+let loadingInterval;
+
+function showLoading(msg) {
+  document.getElementById('mode-paste').style.display = 'none';
+  document.getElementById('mode-email').style.display = 'none';
+  document.getElementById('ai-loading-card').style.display = 'block';
+  document.getElementById('loading-msg').textContent = msg;
+  let i = 0;
+  loadingInterval = setInterval(() => {
+    i = (i + 1) % loadingMessages.length;
+    document.getElementById('loading-msg').textContent = loadingMessages[i];
+  }, 1800);
+}
+
+function hideLoading() {
+  clearInterval(loadingInterval);
+  document.getElementById('ai-loading-card').style.display = 'none';
+}
+
+// ════════════════════════════════
+// UTILITIES
+// ════════════════════════════════
+function copyResp() {
+  const text = document.getElementById('response-text').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+</script>
+</body>
+</html>
